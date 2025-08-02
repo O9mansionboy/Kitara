@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:KitaraApp.Controls"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="KitaraApp.MainWindow"
+        Title="Kitara">
+    <DockPanel>
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="8" Spacing="8">
+            <Button Name="ClearButton" Content="Clear" Width="80" />
+            <TextBlock Text="Brush Size:" VerticalAlignment="Center" />
+            <Slider Name="BrushSizeSlider" Minimum="1" Maximum="32" Value="4" Width="100" />
+            <Button Name="EraserButton" Content="Eraser" Width="80" />
+            <TextBlock Text="Color:" VerticalAlignment="Center" />
+            <ColorPicker Name="BrushColorPicker" Width="120" Height="32" />
+            <Button Name="EyeDropperButton" Content="Eye Dropper" Width="100" />
+            <Button Name="SaveButton" Content="Save as PNG" Width="100" />
+            <Button Name="LoadButton" Content="Load Image" Width="100" />
+        </StackPanel>
+        <controls:CanvasView Name="Canvas" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+    </DockPanel>
+</Window>
