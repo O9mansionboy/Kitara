@@ -13,8 +13,14 @@
             <Slider Name="BrushSizeSlider" Minimum="1" Maximum="32" Value="4" Width="100" />
             <Button Name="EraserButton" Content="Eraser" Width="80" />
             <TextBlock Text="Color:" VerticalAlignment="Center" />
-            <ColorPicker Name="BrushColorPicker" Width="120" Height="32" />
-            <Button Name="EyeDropperButton" Content="Eye Dropper" Width="100" />
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="R:" VerticalAlignment="Center"/>
+                <Slider Name="RedSlider" Minimum="0" Maximum="255" Width="80" Value="0"/>
+                <TextBlock Text="G:" VerticalAlignment="Center"/>
+                <Slider Name="GreenSlider" Minimum="0" Maximum="255" Width="80" Value="0"/>
+                <TextBlock Text="B:" VerticalAlignment="Center"/>
+                <Slider Name="BlueSlider" Minimum="0" Maximum="255" Width="80" Value="0"/>
+            </StackPanel>
             <Button Name="SaveButton" Content="Save as PNG" Width="100" />
             <Button Name="LoadButton" Content="Load Image" Width="100" />
         </StackPanel>
