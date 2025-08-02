@@ -1,0 +1,95 @@
+📌 Phase 1 — Project Setup
+
+Create a new Avalonia project (use dotnet new avalonia.app).
+
+Set up a Git repository (GitHub recommended).
+
+Add a LICENSE file (MIT or GPL).
+
+Write a basic README.md (project name, goal, build instructions).
+
+    Get the project building & running with a blank window.
+
+📌 Phase 2 — Basic Canvas
+
+Create a CanvasView control (a custom user control for drawing).
+
+Handle mouse events:
+
+MouseDown — start drawing.
+
+MouseMove — continue drawing.
+
+    MouseUp — stop drawing.
+
+Use a WriteableBitmap to draw pixels.
+
+Display the canvas in your MainWindow.
+
+    Test basic freehand drawing (single color).
+
+📌 Phase 3 — Basic Tools
+
+Implement brush tool.
+
+Add color picker (simple palette or color dialog).
+
+Add brush size selector (slider or dropdown).
+
+Add clear canvas button.
+
+    Add Save as PNG.
+
+📌 Phase 4 — Core Features
+
+Add Undo/Redo stack.
+
+Implement Eraser tool (draw with transparent/white).
+
+Add Open image (load PNG/JPG to canvas).
+
+    Add Zoom & Pan (optional, but useful).
+
+📌 Phase 5 — UI Polish
+
+Create toolbar (brush, eraser, colors).
+
+Add menu bar (File, Edit, Help).
+
+Improve styling with Avalonia themes.
+
+    Make the window resizable & the canvas scale properly.
+
+📌 Phase 6 — Layers (Optional, More Advanced)
+
+Add basic layer system (stack of bitmaps).
+
+Layer add/delete/reorder.
+
+Toggle layer visibility.
+
+    Export layered file format (e.g., custom .mydraw).
+
+📌 Phase 7 — Open-Source Friendly
+
+Add CONTRIBUTING.md (how to build, run, contribute).
+
+Add GitHub Issues & Milestones.
+
+Set up basic GitHub Actions (build check on PRs).
+
+Add a logo/icon for your app.
+
+    Make a simple website or GitHub Pages landing page.
+
+📌 Phase 8 — Stretch Goals
+
+Support for tablets/pen pressure.
+
+Custom brushes.
+
+Shape tools (rectangles, circles, lines).
+
+Text tool.
+
+Plugin system.
