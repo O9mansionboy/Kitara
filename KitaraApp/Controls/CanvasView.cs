@@ -11,21 +11,25 @@ namespace KitaraApp.Controls
 {
     public class CanvasView : Control
     {
-        private readonly WriteableBitmap _bitmap;
-        private readonly uint[] _buffer;
+        private WriteableBitmap _bitmap;
+        private uint[] _buffer;
 
         private bool _isDrawing;
         private int _lastX, _lastY;
 
-        private const int CanvasWidth = 800;
-        private const int CanvasHeight = 600;
+        private int _canvasWidth;
+        private int _canvasHeight;
 
         private const uint DefaultDrawColor = 0xFF000000; // Black
-        private const uint ClearColor = 0xFFFFFFFF; // White
+        private const uint ClearColor = 0xFFFFFFFF;       // White
 
         private uint _drawColor = DefaultDrawColor;
         private int _brushSize = 4;
         private bool _isEraser = false;
+
+        private Point _cursorPosition;
+        private bool _showBrushPreview = false;
+
 
         public int BrushSize
         {
@@ -42,13 +46,22 @@ namespace KitaraApp.Controls
         public CanvasView()
         {
             Focusable = true;
+            InitializeCanvas(800, 600);
+        }
+
+        private void InitializeCanvas(int width, int height)
+        {
+            _canvasWidth = width;
+            _canvasHeight = height;
+
             _bitmap = new WriteableBitmap(
-                new PixelSize(CanvasWidth, CanvasHeight),
+                new PixelSize(width, height),
                 new Vector(96, 96),
                 Avalonia.Platform.PixelFormat.Bgra8888);
 
-            _buffer = new uint[CanvasWidth * CanvasHeight];
+            _buffer = new uint[width * height];
             Array.Fill(_buffer, ClearColor);
+
             UpdateBitmap();
         }
 
@@ -65,20 +78,26 @@ namespace KitaraApp.Controls
 
         protected override void OnPointerMoved(PointerEventArgs e)
         {
-            if (!_isDrawing) return;
+            _cursorPosition = e.GetPosition(this);
+            _showBrushPreview = true;
 
-            var p = e.GetPosition(this);
-            int x = (int)p.X;
-            int y = (int)p.Y;
+            if (_isDrawing)
+            {
+                int x = (int)_cursorPosition.X;
+                int y = (int)_cursorPosition.Y;
 
-            DrawLine(_lastX, _lastY, x, y);
+                DrawLine(_lastX, _lastY, x, y);
+                _lastX = x;
+                _lastY = y;
 
-            _lastX = x;
-            _lastY = y;
+                UpdateBitmap();
+            }
 
-            UpdateBitmap();
+            InvalidateVisual();
             e.Handled = true;
         }
+
+
 
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
@@ -86,15 +105,27 @@ namespace KitaraApp.Controls
             e.Handled = true;
         }
 
+        protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+        {
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                BrushSize += (int)e.Delta.Y; // Up = increase
+                BrushSize = Math.Clamp(BrushSize, 1, 64);
+                InvalidateVisual(); // refresh the preview circle
+                e.Handled = true;
+            }
+        }
+
+
         private void DrawPixel(int x, int y)
         {
             uint color = _isEraser ? ClearColor : _drawColor;
             int r = _brushSize / 2;
 
             int minX = Math.Max(0, x - r);
-            int maxX = Math.Min(CanvasWidth - 1, x + r);
+            int maxX = Math.Min(_canvasWidth - 1, x + r);
             int minY = Math.Max(0, y - r);
-            int maxY = Math.Min(CanvasHeight - 1, y + r);
+            int maxY = Math.Min(_canvasHeight - 1, y + r);
 
             int rr = r * r;
 
@@ -107,7 +138,7 @@ namespace KitaraApp.Controls
 
                     if (dx * dx + dy * dy <= rr)
                     {
-                        _buffer[py * CanvasWidth + px] = color;
+                        _buffer[py * _canvasWidth + px] = color;
                     }
                 }
             }
@@ -136,13 +167,8 @@ namespace KitaraApp.Controls
         {
             using var fb = _bitmap.Lock();
 
-            // Allocate temp byte[] big enough for all pixels
             byte[] bytes = new byte[_buffer.Length * sizeof(uint)];
-
-            // Block copy uint[] → byte[]
             Buffer.BlockCopy(_buffer, 0, bytes, 0, bytes.Length);
-
-            // Copy bytes → framebuffer
             Marshal.Copy(bytes, 0, fb.Address, bytes.Length);
 
             InvalidateVisual();
@@ -150,9 +176,23 @@ namespace KitaraApp.Controls
 
         public override void Render(DrawingContext context)
         {
-            if (_bitmap != null)
+            context.DrawImage(_bitmap, new Rect(0, 0, _canvasWidth, _canvasHeight));
+            if (_showBrushPreview)
             {
-                context.DrawImage(_bitmap, new Rect(0, 0, CanvasWidth, CanvasHeight));
+                double radius = BrushSize / 2.0;
+                var brushCircle = new EllipseGeometry(
+                    new Rect(
+                        _cursorPosition.X - radius,
+                        _cursorPosition.Y - radius,
+                        BrushSize, BrushSize
+                    )
+                );
+
+                context.DrawGeometry(
+                    null,
+                    new Pen(Brushes.Gray, 1, dashStyle: new DashStyle(new[] { 2.0, 2.0 }, 0)),
+                    brushCircle
+                );
             }
         }
 
@@ -176,25 +216,34 @@ namespace KitaraApp.Controls
         {
             var bitmap = new Bitmap(stream);
 
-            int bufferSize = CanvasWidth * CanvasHeight * 4;
+            int width = bitmap.PixelSize.Width;
+            int height = bitmap.PixelSize.Height;
+            int stride = width * 4;
+            int bufferSize = stride * height;
 
             IntPtr unmanagedBuffer = Marshal.AllocHGlobal(bufferSize);
 
             try
             {
-                bitmap.CopyPixels(new PixelRect(0, 0, CanvasWidth, CanvasHeight), unmanagedBuffer, CanvasWidth * 4, 0);
+                bitmap.CopyPixels(
+                    new PixelRect(0, 0, width, height),
+                    unmanagedBuffer,
+                    bufferSize,
+                    stride);
 
                 byte[] bytes = new byte[bufferSize];
                 Marshal.Copy(unmanagedBuffer, bytes, 0, bufferSize);
 
-                Buffer.BlockCopy(bytes, 0, _buffer, 0, bytes.Length);
-
+                InitializeCanvas(width, height);
+                Buffer.BlockCopy(bytes, 0, _buffer, 0, bufferSize);
                 UpdateBitmap();
             }
             finally
             {
                 Marshal.FreeHGlobal(unmanagedBuffer);
             }
+
+            InvalidateVisual();
         }
     }
 }

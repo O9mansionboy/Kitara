@@ -1,6 +1,7 @@
 # Kitara
 
 Kitara is a simple, open-source drawing application built with Avalonia UI.
+![Preview](/Resorces/Preview.png)
 
 ## Goal
 
@@ -9,9 +10,13 @@ Provide a clean, cross-platform canvas for freehand drawing, with a focus on ext
 ## Build & Run
 
 1. Install [.NET 8 SDK](https://dotnet.microsoft.com/download).
-2. In this folder, run:
+2. In this KitaraApp folder, run:
    ```sh
    dotnet run
+   ```
+   Or
+   ```sh
+   Run the process called Run in VScode
    ```
 
 ## Contributing
