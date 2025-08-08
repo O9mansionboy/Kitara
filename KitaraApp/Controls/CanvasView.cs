@@ -12,8 +12,8 @@ namespace KitaraApp.Controls
 {
     public class CanvasView : Control
     {
-        private WriteableBitmap _bitmap;
-        private uint[] _buffer;
+        private WriteableBitmap _bitmap = null!;
+        private uint[] _buffer = null!;
 
         private List<List<PixelChange>> _undoStack = new List<List<PixelChange>>();
         private List<List<PixelChange>> _redoStack = new List<List<PixelChange>>();
@@ -34,7 +34,14 @@ namespace KitaraApp.Controls
         private Point _cursorPosition;
         private bool _showBrushPreview = false;
 
-        private List<PixelChange> _currentStrokeChanges;
+        private List<PixelChange>? _currentStrokeChanges = null;
+
+        // Pan & zoom fields
+        private double _zoom = 1.0;
+        private double _panX = 0;
+        private double _panY = 0;
+        private Point? _panStart;
+        private Point _panOrigin;
 
         public int BrushSize
         {
@@ -48,7 +55,7 @@ namespace KitaraApp.Controls
             set => _isEraser = value;
         }
 
-        struct PixelChange
+        private struct PixelChange
         {
             public int X;
             public int Y;
@@ -61,7 +68,6 @@ namespace KitaraApp.Controls
             Focusable = true;
             InitializeCanvas(800, 600);
 
-            // Listen for key input for undo/redo
             this.AddHandler(KeyDownEvent, OnKeyDown, handledEventsToo: true);
         }
 
@@ -83,10 +89,21 @@ namespace KitaraApp.Controls
 
         protected override void OnPointerPressed(PointerPressedEventArgs e)
         {
+            if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+            {
+                _panStart = e.GetPosition(this);
+                _panOrigin = new Point(_panX, _panY);
+                e.Handled = true;
+                return;
+            }
+
             var p = e.GetPosition(this);
+            int x = (int)((p.X - _panX) / _zoom);
+            int y = (int)((p.Y - _panY) / _zoom);
+
             _isDrawing = true;
-            _lastX = (int)p.X;
-            _lastY = (int)p.Y;
+            _lastX = x;
+            _lastY = y;
 
             _currentStrokeChanges = DrawPixel(_lastX, _lastY);
 
@@ -96,16 +113,27 @@ namespace KitaraApp.Controls
 
         protected override void OnPointerMoved(PointerEventArgs e)
         {
+            if (_panStart.HasValue && e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+            {
+                var currentPos = e.GetPosition(this);
+                _panX = _panOrigin.X + (currentPos.X - _panStart.Value.X);
+                _panY = _panOrigin.Y + (currentPos.Y - _panStart.Value.Y);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
             _cursorPosition = e.GetPosition(this);
             _showBrushPreview = true;
 
             if (_isDrawing)
             {
-                int x = (int)_cursorPosition.X;
-                int y = (int)_cursorPosition.Y;
+                int x = (int)((_cursorPosition.X - _panX) / _zoom);
+                int y = (int)((_cursorPosition.Y - _panY) / _zoom);
 
                 var changes = DrawLine(_lastX, _lastY, x, y);
-                _currentStrokeChanges.AddRange(changes);
+                if (_currentStrokeChanges != null)
+                    _currentStrokeChanges.AddRange(changes);
 
                 _lastX = x;
                 _lastY = y;
@@ -119,12 +147,19 @@ namespace KitaraApp.Controls
 
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
+            if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+            {
+                _panStart = null;
+                e.Handled = true;
+                return;
+            }
+
             _isDrawing = false;
 
             if (_currentStrokeChanges != null && _currentStrokeChanges.Count > 0)
             {
                 _undoStack.Add(_currentStrokeChanges);
-                _redoStack.Clear(); // Clear redo on new action
+                _redoStack.Clear();
                 _currentStrokeChanges = null;
             }
 
@@ -135,9 +170,26 @@ namespace KitaraApp.Controls
         {
             if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
             {
-                BrushSize += (int)e.Delta.Y; // Up = increase
+                BrushSize += (int)e.Delta.Y; // brush size change
                 BrushSize = Math.Clamp(BrushSize, 1, 64);
-                InvalidateVisual(); // refresh the preview circle
+                InvalidateVisual();
+                e.Handled = true;
+            }
+            else
+            {
+                var oldZoom = _zoom;
+                if (e.Delta.Y > 0)
+                    _zoom *= 1.1;
+                else
+                    _zoom /= 1.1;
+
+                _zoom = Math.Clamp(_zoom, 0.1, 10);
+
+                var mousePos = e.GetPosition(this);
+                _panX = (mousePos.X - _panX) - ((mousePos.X - _panX) * (_zoom / oldZoom));
+                _panY = (mousePos.Y - _panY) - ((mousePos.Y - _panY) * (_zoom / oldZoom));
+
+                InvalidateVisual();
                 e.Handled = true;
             }
         }
@@ -223,15 +275,25 @@ namespace KitaraApp.Controls
 
         public override void Render(DrawingContext context)
         {
-            context.DrawImage(_bitmap, new Rect(0, 0, _canvasWidth, _canvasHeight));
+            var matrix = new Matrix(_zoom, 0, 0, _zoom, _panX, _panY);
+
+            // Use 'using' to push/pop transform
+            using (context.PushPreTransform(matrix))
+            {
+                context.DrawImage(_bitmap, new Rect(0, 0, _canvasWidth, _canvasHeight));
+            }
+
             if (_showBrushPreview)
             {
-                double radius = BrushSize / 2.0;
+                double radius = BrushSize / 2.0 * _zoom;
+                var previewPos = new Point(_cursorPosition.X, _cursorPosition.Y);
+
                 var brushCircle = new EllipseGeometry(
                     new Rect(
-                        _cursorPosition.X - radius,
-                        _cursorPosition.Y - radius,
-                        BrushSize, BrushSize
+                        previewPos.X - radius,
+                        previewPos.Y - radius,
+                        radius * 2,
+                        radius * 2
                     )
                 );
 
@@ -294,12 +356,11 @@ namespace KitaraApp.Controls
 
             InvalidateVisual();
 
-            // Clear undo/redo history since it's a new image
             _undoStack.Clear();
             _redoStack.Clear();
         }
 
-        private void OnKeyDown(object sender, KeyEventArgs e)
+        private void OnKeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
             {
@@ -321,7 +382,7 @@ namespace KitaraApp.Controls
             if (_undoStack.Count == 0)
                 return;
 
-            var lastChanges = _undoStack[_undoStack.Count - 1];
+            var lastChanges = _undoStack[^1];
             _undoStack.RemoveAt(_undoStack.Count - 1);
 
             foreach (var change in lastChanges)
@@ -340,7 +401,7 @@ namespace KitaraApp.Controls
             if (_redoStack.Count == 0)
                 return;
 
-            var changesToRedo = _redoStack[_redoStack.Count - 1];
+            var changesToRedo = _redoStack[^1];
             _redoStack.RemoveAt(_redoStack.Count - 1);
 
             foreach (var change in changesToRedo)
