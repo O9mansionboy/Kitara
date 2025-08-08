@@ -6,6 +6,7 @@ using Avalonia.Media.Imaging;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace KitaraApp.Controls
 {
@@ -13,6 +14,9 @@ namespace KitaraApp.Controls
     {
         private WriteableBitmap _bitmap;
         private uint[] _buffer;
+
+        private List<List<PixelChange>> _undoStack = new List<List<PixelChange>>();
+        private List<List<PixelChange>> _redoStack = new List<List<PixelChange>>();
 
         private bool _isDrawing;
         private int _lastX, _lastY;
@@ -30,6 +34,7 @@ namespace KitaraApp.Controls
         private Point _cursorPosition;
         private bool _showBrushPreview = false;
 
+        private List<PixelChange> _currentStrokeChanges;
 
         public int BrushSize
         {
@@ -43,10 +48,21 @@ namespace KitaraApp.Controls
             set => _isEraser = value;
         }
 
+        struct PixelChange
+        {
+            public int X;
+            public int Y;
+            public uint OldColor;
+            public uint NewColor;
+        }
+
         public CanvasView()
         {
             Focusable = true;
             InitializeCanvas(800, 600);
+
+            // Listen for key input for undo/redo
+            this.AddHandler(KeyDownEvent, OnKeyDown, handledEventsToo: true);
         }
 
         private void InitializeCanvas(int width, int height)
@@ -71,7 +87,9 @@ namespace KitaraApp.Controls
             _isDrawing = true;
             _lastX = (int)p.X;
             _lastY = (int)p.Y;
-            DrawPixel(_lastX, _lastY);
+
+            _currentStrokeChanges = DrawPixel(_lastX, _lastY);
+
             UpdateBitmap();
             e.Handled = true;
         }
@@ -86,7 +104,9 @@ namespace KitaraApp.Controls
                 int x = (int)_cursorPosition.X;
                 int y = (int)_cursorPosition.Y;
 
-                DrawLine(_lastX, _lastY, x, y);
+                var changes = DrawLine(_lastX, _lastY, x, y);
+                _currentStrokeChanges.AddRange(changes);
+
                 _lastX = x;
                 _lastY = y;
 
@@ -97,11 +117,17 @@ namespace KitaraApp.Controls
             e.Handled = true;
         }
 
-
-
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
             _isDrawing = false;
+
+            if (_currentStrokeChanges != null && _currentStrokeChanges.Count > 0)
+            {
+                _undoStack.Add(_currentStrokeChanges);
+                _redoStack.Clear(); // Clear redo on new action
+                _currentStrokeChanges = null;
+            }
+
             e.Handled = true;
         }
 
@@ -116,9 +142,10 @@ namespace KitaraApp.Controls
             }
         }
 
-
-        private void DrawPixel(int x, int y)
+        private List<PixelChange> DrawPixel(int x, int y)
         {
+            List<PixelChange> changes = new List<PixelChange>();
+
             uint color = _isEraser ? ClearColor : _drawColor;
             int r = _brushSize / 2;
 
@@ -138,14 +165,30 @@ namespace KitaraApp.Controls
 
                     if (dx * dx + dy * dy <= rr)
                     {
-                        _buffer[py * _canvasWidth + px] = color;
+                        int idx = py * _canvasWidth + px;
+                        uint oldColor = _buffer[idx];
+                        if (oldColor != color)
+                        {
+                            changes.Add(new PixelChange
+                            {
+                                X = px,
+                                Y = py,
+                                OldColor = oldColor,
+                                NewColor = color
+                            });
+                            _buffer[idx] = color;
+                        }
                     }
                 }
             }
+
+            return changes;
         }
 
-        private void DrawLine(int x0, int y0, int x1, int y1)
+        private List<PixelChange> DrawLine(int x0, int y0, int x1, int y1)
         {
+            List<PixelChange> allChanges = new List<PixelChange>();
+
             int dx = Math.Abs(x1 - x0);
             int sx = x0 < x1 ? 1 : -1;
             int dy = -Math.Abs(y1 - y0);
@@ -154,13 +197,17 @@ namespace KitaraApp.Controls
 
             while (true)
             {
-                DrawPixel(x0, y0);
+                var changes = DrawPixel(x0, y0);
+                allChanges.AddRange(changes);
+
                 if (x0 == x1 && y0 == y1) break;
 
                 int e2 = 2 * err;
                 if (e2 >= dy) { err += dy; x0 += sx; }
                 if (e2 <= dx) { err += dx; y0 += sy; }
             }
+
+            return allChanges;
         }
 
         private void UpdateBitmap()
@@ -199,6 +246,8 @@ namespace KitaraApp.Controls
         public void Clear()
         {
             Array.Fill(_buffer, ClearColor);
+            _undoStack.Clear();
+            _redoStack.Clear();
             UpdateBitmap();
         }
 
@@ -244,6 +293,65 @@ namespace KitaraApp.Controls
             }
 
             InvalidateVisual();
+
+            // Clear undo/redo history since it's a new image
+            _undoStack.Clear();
+            _redoStack.Clear();
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                if (e.Key == Key.Z)
+                {
+                    Undo();
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Y)
+                {
+                    Redo();
+                    e.Handled = true;
+                }
+            }
+        }
+
+        public void Undo()
+        {
+            if (_undoStack.Count == 0)
+                return;
+
+            var lastChanges = _undoStack[_undoStack.Count - 1];
+            _undoStack.RemoveAt(_undoStack.Count - 1);
+
+            foreach (var change in lastChanges)
+            {
+                int idx = change.Y * _canvasWidth + change.X;
+                _buffer[idx] = change.OldColor;
+            }
+
+            _redoStack.Add(lastChanges);
+
+            UpdateBitmap();
+        }
+
+        public void Redo()
+        {
+            if (_redoStack.Count == 0)
+                return;
+
+            var changesToRedo = _redoStack[_redoStack.Count - 1];
+            _redoStack.RemoveAt(_redoStack.Count - 1);
+
+            foreach (var change in changesToRedo)
+            {
+                int idx = change.Y * _canvasWidth + change.X;
+                _buffer[idx] = change.NewColor;
+            }
+
+            _undoStack.Add(changesToRedo);
+
+            UpdateBitmap();
         }
     }
 }

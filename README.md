@@ -10,7 +10,7 @@ Provide a clean, cross-platform canvas for freehand drawing, with a focus on ext
 ## Build & Run
 
 1. Install [.NET 8 SDK](https://dotnet.microsoft.com/download).
-2. In this KitaraApp folder, run:
+2. In the KitaraApp folder, run:
    ```sh
    dotnet run
    ```
