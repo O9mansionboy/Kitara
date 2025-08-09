@@ -170,7 +170,7 @@ namespace KitaraApp.Controls
         {
             if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
             {
-                BrushSize += (int)e.Delta.Y; // brush size change
+                BrushSize += (int)e.Delta.Y;
                 BrushSize = Math.Clamp(BrushSize, 1, 64);
                 InvalidateVisual();
                 e.Handled = true;
@@ -178,16 +178,12 @@ namespace KitaraApp.Controls
             else
             {
                 var oldZoom = _zoom;
-                if (e.Delta.Y > 0)
-                    _zoom *= 1.1;
-                else
-                    _zoom /= 1.1;
-
-                _zoom = Math.Clamp(_zoom, 0.1, 10);
+                _zoom = Math.Clamp(_zoom * (e.Delta.Y > 0 ? 1.1 : 1 / 1.1), 0.1, 10);
 
                 var mousePos = e.GetPosition(this);
-                _panX = (mousePos.X - _panX) - ((mousePos.X - _panX) * (_zoom / oldZoom));
-                _panY = (mousePos.Y - _panY) - ((mousePos.Y - _panY) * (_zoom / oldZoom));
+
+                _panX = mousePos.X - (mousePos.X - _panX) * (_zoom / oldZoom);
+                _panY = mousePos.Y - (mousePos.Y - _panY) * (_zoom / oldZoom);
 
                 InvalidateVisual();
                 e.Handled = true;
